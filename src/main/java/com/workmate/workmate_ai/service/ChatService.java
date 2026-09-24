@@ -1,5 +1,8 @@
 package com.workmate.workmate_ai.service;
 
+import com.workmate.workmate_ai.dto.ChatApiResponse;
+import com.workmate.workmate_ai.dto.ChatMessageResponse;
+import com.workmate.workmate_ai.dto.ConversationResponse;
 import com.workmate.workmate_ai.entity.ChatMessage;
 import com.workmate.workmate_ai.entity.Conversation;
 import com.workmate.workmate_ai.entity.User;
@@ -30,7 +33,7 @@ public class ChatService {
         this.ragService = ragService;
     }
 
-    public String chat(Long conversationId, String question) {
+    public ChatApiResponse chat(Long conversationId, String question) {
 
         String email = SecurityContextHolder
                 .getContext()
@@ -62,7 +65,6 @@ public class ChatService {
             }
         }
 
-        // Get previous messages BEFORE saving the current question
         List<ChatMessage> previousMessages =
                 chatMessageRepository
                         .findByConversationIdOrderByCreatedAtAsc(
@@ -75,7 +77,6 @@ public class ChatService {
                 )
                 .reduce("", (a, b) -> a + "\n" + b);
 
-        // Save current user message
         ChatMessage userMessage = new ChatMessage();
         userMessage.setConversation(conversation);
         userMessage.setRole("USER");
@@ -83,12 +84,10 @@ public class ChatService {
 
         chatMessageRepository.save(userMessage);
 
-        // Ask RAG using previous conversation context
         String answer = ragService
                 .ask(question, conversationHistory)
                 .getAnswer();
 
-        // Save assistant response
         ChatMessage assistantMessage = new ChatMessage();
         assistantMessage.setConversation(conversation);
         assistantMessage.setRole("ASSISTANT");
@@ -96,6 +95,67 @@ public class ChatService {
 
         chatMessageRepository.save(assistantMessage);
 
-        return answer;
+        return new ChatApiResponse(
+                conversation.getId(),
+                answer
+        );
+    }
+
+    public List<ConversationResponse> getConversations() {
+
+        String email = SecurityContextHolder
+                .getContext()
+                .getAuthentication()
+                .getName();
+
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new RuntimeException("User not found"));
+
+        return conversationRepository
+                .findByUserIdOrderByUpdatedAtDesc(user.getId())
+                .stream()
+                .map(conversation ->
+                        new ConversationResponse(
+                                conversation.getId(),
+                                conversation.getCreatedAt(),
+                                conversation.getUpdatedAt()
+                        )
+                )
+                .toList();
+    }
+
+    public List<ChatMessageResponse> getMessages(Long conversationId) {
+
+        String email = SecurityContextHolder
+                .getContext()
+                .getAuthentication()
+                .getName();
+
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new RuntimeException("User not found"));
+
+        Conversation conversation =
+                conversationRepository.findById(conversationId)
+                        .orElseThrow(() ->
+                                new RuntimeException("Conversation not found"));
+
+        if (!conversation.getUser().getId().equals(user.getId())) {
+            throw new RuntimeException(
+                    "You do not have access to this conversation"
+            );
+        }
+
+        return chatMessageRepository
+                .findByConversationIdOrderByCreatedAtAsc(conversationId)
+                .stream()
+                .map(message ->
+                        new ChatMessageResponse(
+                                message.getId(),
+                                message.getRole(),
+                                message.getContent(),
+                                message.getCreatedAt()
+                        )
+                )
+                .toList();
     }
 }

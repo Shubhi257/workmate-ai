@@ -1,5 +1,6 @@
 package com.workmate.workmate_ai.service;
 
+import com.workmate.workmate_ai.dto.ChatApiResponse;
 import com.workmate.workmate_ai.entity.ChatMessage;
 import com.workmate.workmate_ai.entity.Conversation;
 import com.workmate.workmate_ai.entity.User;
@@ -76,6 +77,7 @@ class ChatServiceTest {
 
         // Mock Spring Security context
         Authentication authentication = mock(Authentication.class);
+
         when(authentication.getName())
                 .thenReturn("test@example.com");
 
@@ -93,15 +95,20 @@ class ChatServiceTest {
                     .when(SecurityContextHolder::getContext)
                     .thenReturn(securityContext);
 
-            String answer = chatService.chat(
+            ChatApiResponse response = chatService.chat(
                     null,
                     "How many days can I work from home?"
             );
 
             // Assert
             assertEquals(
+                    1L,
+                    response.getConversationId()
+            );
+
+            assertEquals(
                     "You can work from home up to 2 days per week.",
-                    answer
+                    response.getAnswer()
             );
         }
 
